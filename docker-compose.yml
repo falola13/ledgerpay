@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres
+    container_name: ledgerpay-pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: ledgerpay
+    ports:
+      - "5436:5432"
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      retries: 15
+  migrate:
+    image: postgres:18
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations
+    environment:
+      PGPASSWORD: dev
+    entrypoint:
+      [
+        "psql",
+        "postgres://postgres@postgres:5432/ledgerpay",
+        "-f",
+        "/migrations/001_init.sql",
+      ]
+
+  server:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://postgres:dev@postgres:5432/ledgerpay
+      PORT: 8080
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+volumes:
+  db_data:
