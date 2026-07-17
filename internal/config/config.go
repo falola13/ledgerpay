@@ -6,6 +6,7 @@ type Config struct {
 	Port        string
 	JWTSecret   string
 	DatabaseURL string
+	RedisAddr   string
 }
 
 func Load() Config {
@@ -13,6 +14,7 @@ func Load() Config {
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		Port:        gotenv("PORT", "8080"),
 		JWTSecret:   os.Getenv("JWTSecret"),
+		RedisAddr:   os.Getenv("RedisAddr"),
 	}
 }
 

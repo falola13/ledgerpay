@@ -13,6 +13,7 @@ import (
 	"github.com/falola13/ledgerpay/internal/config"
 	"github.com/falola13/ledgerpay/internal/database"
 	"github.com/falola13/ledgerpay/internal/health"
+	"github.com/falola13/ledgerpay/internal/middleware"
 	"github.com/falola13/ledgerpay/internal/wallets"
 	"github.com/joho/godotenv"
 )
@@ -25,12 +26,14 @@ func main() {
 
 	ctx := context.Background()
 
+	handler := middleware.Logger(mux)
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      mux,
+		Handler:      handler,
 		WriteTimeout: 10 * time.Second,
 		ReadTimeout:  10 * time.Second,
 		IdleTimeout:  time.Minute,
@@ -64,6 +67,9 @@ func main() {
 	// Wallets
 	mux.HandleFunc("GET /v1/wallets/{id}", http.HandlerFunc(walletHandler.GetWalletById))
 	mux.HandleFunc("POST /v1/wallets/{id}/fund", http.HandlerFunc(walletHandler.FundWallet))
+
+	// Charges
+	mux.HandleFunc("POST /v1/charges", http.HandlerFunc(walletHandler.Charges))
 
 	//Server start
 	go func() {

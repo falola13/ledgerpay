@@ -1,0 +1,2 @@
+ALTER TYPE OutboxStatus ADD VALUE IF NOT EXISTS 'dead';
+ALTER TYPE outbox_events ADD COLUMN IF NOT EXISTS last_error TEXT;

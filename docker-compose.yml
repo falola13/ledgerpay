@@ -29,6 +29,14 @@ services:
         "postgres://postgres@postgres:5432/ledgerpay",
         "-f",
         "/migrations/001_init.sql",
+        "-f",
+        "/migrations/002_transfers.sql",
+        "-f",
+        "/migrations/003_idempotency.sql",
+        "-f",
+        "/migrations/004_outbox.sql",
+        "-f",
+        "/migrations/005_outbox_dead.sql",
       ]
 
   server:
@@ -41,5 +49,26 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  worker:
+    build: .
+    entrypoint: ["/worker"]
+    environment:
+      DATABASE_URL: postgres://postgres:dev@postgres:5432/ledgerpay
+      WEBHOOK_SECRET: dev-webhook-secret
+      WEBHOOK_URL: http://testreceiver:9090/webhook
+      PORT: 8080
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  testreceiver:
+    build: .
+    entrypoint: [/testreceiver]
+    ports:
+      - "9090:9090"
+    environment:
+      DATABASE_URL: postgres://postgres:dev@postgres:5432/ledgerpay
+      WEBHOOK_SECRET: dev-webhook-secret
+      WEBHOOK_URL: http://testreceiver:9090/webhook
 volumes:
   db_data:
