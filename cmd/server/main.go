@@ -13,6 +13,7 @@ import (
 	"github.com/falola13/ledgerpay/internal/config"
 	"github.com/falola13/ledgerpay/internal/database"
 	"github.com/falola13/ledgerpay/internal/health"
+	"github.com/falola13/ledgerpay/internal/letters"
 	"github.com/falola13/ledgerpay/internal/middleware"
 	"github.com/falola13/ledgerpay/internal/wallets"
 	"github.com/joho/godotenv"
@@ -70,6 +71,11 @@ func main() {
 
 	// Charges
 	mux.HandleFunc("POST /v1/charges", http.HandlerFunc(walletHandler.Charges))
+
+	letterStore := letters.NewStore(pool)
+	letterHandler := letters.NewHandler(letterStore)
+
+	mux.HandleFunc("GET /v1/admin/dead-letters", http.HandlerFunc(letterHandler.DeadLetters))
 
 	//Server start
 	go func() {

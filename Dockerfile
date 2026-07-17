@@ -10,6 +10,7 @@ COPY . .
 
 RUN CGO_ENABLED=0 go build -o /server ./cmd/server
 RUN CGO_ENABLED=0 go build -o /worker ./cmd/worker
+RUN CGO_ENABLED=0 go build -o /testreceiver ./cmd/testreceiver
 
 FROM alpine:3.20
 
@@ -17,6 +18,7 @@ RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /server /server
 COPY --from=builder /worker /worker
+COPY --from=builder /testreceiver /testreceiver
 
 EXPOSE 8080
 

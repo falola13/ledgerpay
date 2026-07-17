@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/rand"
+	"net/http"
 	"os"
 	"os/signal"
 	"time"
@@ -26,10 +31,38 @@ type Events struct {
 	CreatedAt   time.Time      `json:"created_at"`
 }
 
+type Schedule map[int]time.Duration
+
+var RetryBackup = Schedule{
+	0: time.Second,
+	1: 10 * time.Second,
+	2: 30 * time.Second,
+	3: 100 * time.Second,
+}
+
+type Para struct {
+	secret string
+	url    string
+}
+
+func NewPara(secret, url string) *Para {
+	return &Para{secret: secret, url: url}
+}
+
+func NextRetry(attempts int) (time.Duration, error) {
+	if d, ok := RetryBackup[attempts]; ok {
+		return d, nil
+	}
+	return 0, fmt.Errorf("Out of schedule")
+}
+
 const EventType = "transfer.succeeded"
 
 func main() {
 	_ = godotenv.Load()
+	con := config.Load()
+	secret := con.WEBHOOK_SECRET
+	Url := con.WEBHOOK_URL
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
@@ -44,6 +77,8 @@ func main() {
 	}
 	defer pool.Close()
 
+	handler := NewPara(secret, Url)
+
 	slog.Info("✅ Worker started, waiting for jobs")
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
@@ -57,7 +92,7 @@ func main() {
 		default:
 		}
 
-		n, err := processBatch(ctx, pool)
+		n, err := handler.processBatch(ctx, pool)
 		if err != nil {
 			slog.Error("Batch failed", "error", err)
 			time.Sleep(2 * time.Second)
@@ -71,17 +106,43 @@ func main() {
 	}
 }
 
-func deliverEvent(v Events) error {
+func (p *Para) deliverEvent(ctx context.Context, v Events) error {
 
-	if rand.Float64() < 0 {
-		return fmt.Errorf("Failed to send event")
+	bodyBytes, err := json.Marshal(v.Payload)
+	if err != nil {
+		slog.Warn("Marshal error", "error", err)
+		return err
 	}
 
-	slog.Info("delivering event", "event-type", v.EventType, "status", "delivered", "payload", v.Payload)
-	return nil
+	mac := hmac.New(sha256.New, []byte(p.secret))
+	mac.Write(bodyBytes)
+	stamp := hex.EncodeToString(mac.Sum(nil))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-LedgerPay-Signature", stamp)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	} else {
+		return fmt.Errorf("Network error")
+	}
+
 }
 
-func processBatch(ctx context.Context, pool *pgxpool.Pool) (int, error) {
+func (p *Para) processBatch(ctx context.Context, pool *pgxpool.Pool) (int, error) {
 	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return 0, fmt.Errorf("BeginTx : %w", err)
@@ -122,14 +183,38 @@ func processBatch(ctx context.Context, pool *pgxpool.Pool) (int, error) {
 
 		switch event.EventType {
 		case EventType:
-			if err := deliverEvent(event); err != nil {
-				nextRetry := time.Now().Add(10 * time.Second)
+			if err := p.deliverEvent(ctx, event); err != nil {
+
+				retry, retryerr := NextRetry(event.Attempts)
+				nextRetry := time.Now().Add(retry)
+
+				//Set status to dead after schedule timeout
+				if retryerr != nil {
+					status := "dead"
+					_, err = tx.Exec(ctx, `
+				UPDATE outbox_events 
+				SET attempts = COALESCE($1,attempts),
+					next_retry_at = COALESCE($2,next_retry_at),
+					status = COALESCE($4,status),
+					last_error = COALESCE($5,last_error)
+				WHERE id = $3
+				`, event.Attempts+1, nextRetry, event.ID, status, err.Error())
+
+					if err != nil {
+						return 0, fmt.Errorf("update-query: %w", err)
+					}
+					continue
+				}
+
+				// Update attempt and last error
+
 				_, err = tx.Exec(ctx, `
 				UPDATE outbox_events 
 				SET attempts = COALESCE($1,attempts),
-					next_retry_at = COALESCE($2,next_retry_at)
+					next_retry_at = COALESCE($2,next_retry_at),
+					last_error = COALESCE($4,last_error)
 				WHERE id = $3
-				`, event.Attempts+1, nextRetry, event.ID)
+				`, event.Attempts+1, nextRetry, event.ID, err.Error())
 
 				if err != nil {
 					return 0, fmt.Errorf("update-query: %w", err)

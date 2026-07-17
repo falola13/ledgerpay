@@ -2,17 +2,24 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
+	"github.com/falola13/ledgerpay/internal/config"
+	"github.com/falola13/ledgerpay/internal/middleware"
+	"github.com/falola13/ledgerpay/internal/receiver"
 	"github.com/joho/godotenv"
 )
 
+const port = "9090"
+
 func main() {
 	_ = godotenv.Load()
+	config := config.Load()
 	ctx := context.Background()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -20,7 +27,13 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	srv := &http.Server{Addr: ":" + "9090", Handler: mux}
+	handler := middleware.Logger(mux)
+
+	srv := &http.Server{Addr: ":" + port, Handler: handler}
+
+	webhookHandler := receiver.NewHandler(config.WEBHOOK_SECRET)
+
+	mux.HandleFunc("POST /webhook", http.HandlerFunc(webhookHandler.Webhook))
 
 	go func() {
 		slog.Info("Reciever started", "Port", "9090")
@@ -29,6 +42,8 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
+	slog.Info(fmt.Sprintf("Receiver waiting on port %s", port))
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
