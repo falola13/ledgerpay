@@ -27,7 +27,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	handler := middleware.Logger(mux)
+	handler := middleware.RequestId(middleware.Logger(mux))
 
 	srv := &http.Server{Addr: ":" + port, Handler: handler}
 

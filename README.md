@@ -34,13 +34,15 @@ docker compose up --build
 # health
 curl.exe -s http://localhost:8080/v1/ready
 
-# create account (+ wallet in response)
-curl.exe -s -X POST http://localhost:8080/v1/accounts -H "Content-Type: application/json" -d "{\"email\":\"you@example.com\"}"
+# create account — wallet id is at .data.wallet.id
+curl.exe -s -X POST http://localhost:8080/v1/accounts -H "Content-Type: application/json" -d '{"email":"you@example.com"}'
 
-# fund + charge (replace WALLET)
-curl.exe -s -X POST http://localhost:8080/v1/wallets/WALLET/fund -H "Content-Type: application/json" -d "{\"amount_cents\":1000}"
-curl.exe -s -i -X POST http://localhost:8080/v1/charges -H "Content-Type: application/json" -H "Idempotency-Key: demo-1" -d "{\"wallet_id\":\"WALLET\",\"amount_cents\":500,\"currency\":\"USD\"}"
+# fund + charge (replace WALLET with data.wallet.id)
+curl.exe -s -X POST http://localhost:8080/v1/wallets/WALLET/fund -H "Content-Type: application/json" -d '{"amount_cents":1000}'
+curl.exe -s -i -X POST http://localhost:8080/v1/charges -H "Content-Type: application/json" -H "Idempotency-Key: demo-1" -d '{"wallet_id":"WALLET","amount_cents":500,"currency":"USD"}'
 ```
+
+> PowerShell: prefer single-quoted `-d '...'` JSON. If `localhost:8080` hits another app, try the Docker-published port or free host 8080 first.
 
 ## Demo: idempotent charges
 

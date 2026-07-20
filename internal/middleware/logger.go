@@ -24,7 +24,7 @@ func Logger(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &StatusRecorder{ResponseWriter: w, status: http.StatusOK}
 
-		requestId := r.Context().Value(RequestIdKey).(string)
+		requestId, _ := r.Context().Value(RequestIdKey).(string)
 
 		next.ServeHTTP(rec, r)
 
