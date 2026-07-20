@@ -37,6 +37,8 @@ services:
         "/migrations/004_outbox.sql",
         "-f",
         "/migrations/005_outbox_dead.sql",
+        "-f",
+        "/migrations/006_indexes.sql",
       ]
 
   server:
@@ -49,6 +51,12 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/ready"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
 
   worker:
     build: .

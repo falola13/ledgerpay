@@ -14,9 +14,11 @@ import (
 	"github.com/falola13/ledgerpay/internal/database"
 	"github.com/falola13/ledgerpay/internal/health"
 	"github.com/falola13/ledgerpay/internal/letters"
+	"github.com/falola13/ledgerpay/internal/metrics"
 	"github.com/falola13/ledgerpay/internal/middleware"
 	"github.com/falola13/ledgerpay/internal/wallets"
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -27,7 +29,7 @@ func main() {
 
 	ctx := context.Background()
 
-	handler := middleware.Logger(mux)
+	handler := middleware.RequestId(middleware.Logger(mux))
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
@@ -61,6 +63,7 @@ func main() {
 
 	mux.HandleFunc("GET /v1/health", http.HandlerFunc(checker.Live))
 	mux.HandleFunc("GET /v1/ready", http.HandlerFunc(checker.Ready))
+	mux.Handle("GET /v1/metrics", promhttp.Handler())
 
 	//Accounts
 	mux.HandleFunc("POST /v1/accounts", http.HandlerFunc(accountHandler.Create))
@@ -76,6 +79,23 @@ func main() {
 	letterHandler := letters.NewHandler(letterStore)
 
 	mux.HandleFunc("GET /v1/admin/dead-letters", http.HandlerFunc(letterHandler.DeadLetters))
+
+	go func() {
+		var pending, dead int64
+		for {
+			if err := pool.QueryRow(ctx, `
+			SELECT COUNT(*) FROM outbox_events WHERE status = 'pending'
+			`).Scan(&pending); err == nil {
+				metrics.OutboxDepth.Set(float64(pending))
+			}
+			if err := pool.QueryRow(ctx, `
+			SELECT COUNT(*) FROM outbox_events WHERE status = 'dead'
+			`).Scan(&dead); err == nil {
+				metrics.DeadLettersDepth.Set(float64(dead))
+			}
+			time.Sleep(5 * time.Second)
+		}
+	}()
 
 	//Server start
 	go func() {
