@@ -1,5 +1,7 @@
 # LedgerPay
 
+[![CI](https://github.com/falola13/ledgerpay/actions/workflows/ci.yml/badge.svg)](https://github.com/falola13/ledgerpay/actions/workflows/ci.yml)
+
 Educational Go + Postgres payments API: double-entry ledger, overdraft-safe charges, idempotent retries, transactional outbox, and signed webhooks with retries / dead letters. **Not production money** — demos and interview vocabulary, not real card rails.
 
 ## Architecture
